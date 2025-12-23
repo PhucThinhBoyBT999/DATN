@@ -7,9 +7,7 @@ import threading
 import mediapipe as mp
 from keras_facenet import FaceNet
 
-# ═══════════════════════════════════════════════════════════════════════════
 # CẤU HÌNH
-# ═══════════════════════════════════════════════════════════════════════════
 
 BLYNK_TOKEN = "dRetcrvdh9fU4oY6Fd88XwqpBCCXNJ_5"
 BLYNK_URL = f"https://blynk.cloud/external/api/update?token={BLYNK_TOKEN}"
@@ -29,9 +27,7 @@ FACENET_THRESHOLD = 0.6
 COOLDOWN_SECONDS = 20
 CAPTURE_DELAY = 0.3
 
-# ═══════════════════════════════════════════════════════════════════════════
 # KHỞI TẠO
-# ═══════════════════════════════════════════════════════════════════════════
 
 # MediaPipe
 mp_face_detection = mp.solutions.face_detection  # type: ignore
@@ -43,29 +39,19 @@ facenet = FaceNet()
 print("✅ FaceNet model loaded!")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# TIỆN ÍCH
-# ═══════════════════════════════════════════════════════════════════════════
-
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
 def print_header():
     clear_screen()
-    print("╔═══════════════════════════════════════════════╗")
-    print("║   NHẬN DIỆN - MEDIAPIPE + FACENET            ║")
-    print("╚═══════════════════════════════════════════════╝")
-
-
 def print_menu():
     print_header()
-    print("  🎯 Database: Google Sheets")
+    print("   Database: Google Sheets")
     print("\n  1.  Thu thập ảnh khuôn mặt")
-    print("  2.  Huấn luyện FaceNet (toàn bộ)")
-    print("  3.  Huấn luyện FaceNet (chỉ người mới) ⚡")
-    print("  4.  Bật CẢ 2 CAMERA (IN + OUT)")
-    print("  5.  Quản lý người dùng")
+    print("  2.  Train Model (Auto-detect)")  # ← SỬA: Gộp 2 thành 1
+    print("  3.  Bật CẢ 2 CAMERA (IN + OUT)")
+    print("  4.  Quản lý người dùng")
     print("  0.  Thoát")
     print("\n" + "═" * 50)
 
@@ -95,7 +81,7 @@ def send_face_to_blynk(face_id, name, is_check_out=False):
 def load_users_from_google_sheets():
     """Load users từ Google Sheets"""
     try:
-        print("📡 Load Google Sheets...")
+        print(" Load Google Sheets...")
 
         headers = {
             'User-Agent': 'Mozilla/5.0',
@@ -129,7 +115,7 @@ def load_users_from_google_sheets():
         return users
 
     except Exception as e:
-        print(f"❌ Lỗi: {e}")
+        print(f" Lỗi: {e}")
         return {}
 
 
@@ -140,6 +126,7 @@ def add_user_to_file(user_id, name, rfid):
             pass
     with open("users.txt", "a", encoding="utf-8") as f:
         f.write(f"{user_id},{name},{rfid}\n")
+
 
 # MEDIAPIPE DETECTION
 
@@ -162,6 +149,8 @@ def detect_faces(frame, detector):
                 faces.append((x, y, width, height))
 
     return faces
+
+
 # FACENET FUNCTIONS
 def get_embedding(face_rgb):
     """Tính FaceNet embedding cho 1 face (RGB)"""
@@ -171,7 +160,7 @@ def get_embedding(face_rgb):
         embedding = embedding / np.linalg.norm(embedding)
         return embedding
     except Exception as e:
-        print(f"❌ Embedding error: {e}")
+        print(f" Embedding error: {e}")
         return None
 
 
@@ -179,7 +168,9 @@ def compare_embeddings(embedding1, embedding2):
     """So sánh 2 embeddings - trả về distance"""
     distance = np.linalg.norm(embedding1 - embedding2)
     return distance
-# THU THẬP
+
+# YÊU CẦU 1: THU THẬP ẢNH
+
 def collect_faces():
     print_header()
     print("     📸 THU THẬP ẢNH                          ")
@@ -188,8 +179,8 @@ def collect_faces():
     users = load_users_from_google_sheets()
 
     if not users:
-        print("❌ Không load được Google Sheets!")
-        print("💡 Nhập thủ công:")
+        print(" Không load được Google Sheets!")
+        print("Nhập thủ công:")
         name = input("Tên: ").strip()
         rfid = input("RFID: ").strip()
         face_id = input("ID: ").strip()
@@ -229,33 +220,85 @@ def collect_faces():
 
     add_user_to_file(face_id, name, rfid)
 
-    print("\n1. Camera IN | 2. Camera OUT")
-    choice = input("Chọn: ").strip()
-
-    cam_url = ESP32CAM_IN if choice == "1" else ESP32CAM_OUT
-    cam_type = "IN" if choice == "1" else "OUT"
+    # ★★★ YÊU CẦU 2: CHỈ DÙNG CAMERA IN ★★★
+    cam_url = ESP32CAM_IN
+    cam_type = "IN"
+    print(f"\n📹 Sử dụng Camera {cam_type}")
 
     folder_name = f"Mauanh/{name.replace(' ', '_')}"
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
-    print(f"📁 Thư mục: {folder_name}")
+    print(f" Thư mục: {folder_name}")
 
     cap = cv2.VideoCapture(cam_url)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():
-        print(f"❌ Camera {cam_type} lỗi!")
+        print(f" Camera {cam_type} lỗi!")
         input()
         return
 
-    detector = mp_face_detection.FaceDetection(model_selection=0,
-                                               min_detection_confidence=MEDIAPIPE_CONFIDENCE)  # type: ignore
+    detector = mp_face_detection.FaceDetection(
+        model_selection=0,
+        min_detection_confidence=MEDIAPIPE_CONFIDENCE
+    )  # type: ignore
 
+    #  CHỜ PHÁT HIỆN KHUÔN MẶT
+    print(f"\n Đang chờ phát hiện khuôn mặt...")
+    print(f" Hãy đưa mặt vào trước camera!\n")
+
+    face_detected = False
+
+    # Vòng lặp chờ phát hiện khuôn mặt
+    while not face_detected:
+        ret, frame = cap.read()
+        if not ret:
+            time.sleep(0.01)
+            continue
+
+        faces = detect_faces(frame, detector)
+
+        # Vẽ UI
+        cv2.putText(frame, f"{cam_type}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+        if len(faces) == 0:
+            status_text = "WAITING FOR FACE..."
+            status_color = (0, 0, 255)  # Đỏ
+            cv2.putText(frame, status_text, (10, 70),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
+        else:
+            # ★ PHÁT HIỆN KHUÔN MẶT → THOÁT VÒNG LẶP ★
+            status_text = "FACE DETECTED! Starting..."
+            status_color = (0, 255, 0)  # Xanh
+            cv2.putText(frame, status_text, (10, 70),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
+
+            # Vẽ khung quanh khuôn mặt
+            for (x, y, w, h) in faces:
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 3)
+
+            cv2.imshow(f'Camera {cam_type}', frame)
+            cv2.waitKey(1000)  # Hiển thị 1 giây
+
+            face_detected = True
+            print("✅ Phát hiện khuôn mặt! Bắt đầu thu thập...\n")
+
+        cv2.imshow(f'Camera {cam_type}', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            print("❌ Đã hủy")
+            detector.close()
+            cap.release()
+            cv2.destroyAllWindows()
+            input()
+            return
+
+    # BẮT ĐẦU THU THẬP
     count, max_images = 0, 100
     last_capture_time = 0
 
-    print(f"\n📸 Thu {max_images} ảnh - Q thoát")
-    print(f"💡 Đưa mặt vào camera, đợi chữ 'READY' màu xanh!\n")
+    print(f"📸 Thu {max_images} ảnh - Q để thoát")
+    print(f"💡 Giữ mặt trong khung hình, đợi chữ 'READY' màu xanh!\n")
 
     while count < max_images:
         ret, frame = cap.read()
@@ -269,8 +312,10 @@ def collect_faces():
         time_since_last = current_time - last_capture_time
         can_capture = (time_since_last >= CAPTURE_DELAY) and (count > 0 or time_since_last > 1.0)
 
-        cv2.putText(frame, f"{cam_type}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(frame, f"Saved: {count}/{max_images}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        cv2.putText(frame, f"{cam_type}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(frame, f"Saved: {count}/{max_images}", (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
         if len(faces) == 0:
             status = "NO FACE"
@@ -283,7 +328,8 @@ def collect_faces():
             status = f"Wait {cooldown:.1f}s"
             status_color = (0, 165, 255)
 
-        cv2.putText(frame, status, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
+        cv2.putText(frame, status, (10, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
 
         if len(faces) > 0 and can_capture:
             for (x, y, w, h) in faces:
@@ -294,7 +340,8 @@ def collect_faces():
                 cv2.imwrite(filename, face_rgb)
 
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(frame, f"OK {count}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                cv2.putText(frame, f"OK {count}", (x, y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
                 print(f"\r✅ {count}/{max_images}", end="")
 
@@ -318,122 +365,89 @@ def collect_faces():
     print(f"\n\n✅ {count} ảnh → {folder_name}")
     input()
 
-# TRAINING FACENET (TOÀN BỘ)
+def train_model_auto(reset=False):
 
-def train_model():
     print_header()
-    print("     TRAINING FACENET (TOÀN BỘ)           ")
+    print("╔" + "═" * 48 + "╗")
+    print("║" + " " * 15 + "TRAIN MODEL" + " " * 22 + "║")
+    print("╚" + "═" * 48 + "╝")
+    print()
 
-    if not os.path.exists("Mauanh"):
-        print("❌ Chưa có ảnh!")
-        input()
-        return
 
-    print("📂 Đọc ảnh từ các thư mục...")
-    print("⏱️  Mỗi ảnh ~40ms, vui lòng đợi...\n")
 
-    embeddings_dict = {}
-    total_images = 0
+    db_path = "trainer/facenet_database.npy"
+
+    if reset:
+        # Người dùng chọn "Reset và train lại"
+        if os.path.exists(db_path):
+            os.remove(db_path)
+            print("🗑️  Đã xóa database cũ")
+        print("🔵 Chế độ: Train toàn bộ (reset)")
+        print("─" * 50)
+        mode = 1
+
+    elif os.path.exists(db_path):
+
+        old_db = np.load(db_path, allow_pickle=True).item()
+        print("🟢 Chế độ: Train người mới (incremental)")
+        print(f"   Phát hiện database cũ: {len(old_db)} users")
+        print("─" * 50)
+        mode = 2
+
+    else:
+        # Chưa có database → Train toàn bộ lần đầu
+        print("🔵 Chế độ: Train toàn bộ (lần đầu)")
+        print("─" * 50)
+        mode = 1
+
+    print()
+
+    # GỌI HÀM TRAIN CHUNG
     start_time = time.time()
 
-    # Đếm tổng số ảnh
-    for folder_name in os.listdir("Mauanh"):
-        folder_path = os.path.join("Mauanh", folder_name)
-        if os.path.isdir(folder_path):
-            for filename in os.listdir(folder_path):
-                if filename.startswith("User.") and filename.endswith(".jpg"):
-                    total_images += 1
-        elif folder_name.startswith("User.") and folder_name.endswith(".jpg"):
-            total_images += 1
+    result = train_model_unified(mode)
 
-    if total_images == 0:
-        print("❌ Không có ảnh!")
-        input()
-        return
+    if result:
+        elapsed = time.time() - start_time
+        print()
+        print(f"⏱️  Thời gian: {elapsed:.2f} giây")
+        print()
 
-    print(f"📊 Tìm thấy {total_images} ảnh\n")
-
-    processed = 0
-
-    # Đọc từ folders
-    for folder_name in os.listdir("Mauanh"):
-        folder_path = os.path.join("Mauanh", folder_name)
-
-        if os.path.isdir(folder_path):
-            for filename in os.listdir(folder_path):
-                if filename.startswith("User.") and filename.endswith(".jpg"):
-                    path = os.path.join(folder_path, filename)
-                    user_id = int(filename.split(".")[1])
-
-                    img = cv2.imread(path)
-                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    embedding = get_embedding(img_rgb)
-
-                    if embedding is not None:
-                        if user_id not in embeddings_dict:
-                            embeddings_dict[user_id] = []
-                        embeddings_dict[user_id].append(embedding)
-
-                    processed += 1
-                    print(f"\r🔄 Processing: {processed}/{total_images} ({processed * 100 // total_images}%)", end="")
-
-        elif folder_name.startswith("User.") and folder_name.endswith(".jpg"):
-            path = os.path.join("Mauanh", folder_name)
-            user_id = int(folder_name.split(".")[1])
-
-            img = cv2.imread(path)
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            embedding = get_embedding(img_rgb)
-
-            if embedding is not None:
-                if user_id not in embeddings_dict:
-                    embeddings_dict[user_id] = []
-                embeddings_dict[user_id].append(embedding)
-
-            processed += 1
-            print(f"\r🔄 Processing: {processed}/{total_images} ({processed * 100 // total_images}%)", end="")
-
-    print("\n\n📊 Tính embeddings trung bình cho mỗi user...")
-
-    final_database = {}
-    for user_id, embeddings in embeddings_dict.items():
-        mean_embedding = np.mean(embeddings, axis=0)
-        mean_embedding = mean_embedding / np.linalg.norm(mean_embedding)
-        final_database[user_id] = mean_embedding
-        print(f"   User {user_id}: {len(embeddings)} ảnh → 1 embedding (512-dim)")
-
-    if not os.path.exists("trainer"):
-        os.makedirs("trainer")
-
-    np.save("trainer/facenet_database.npy", np.array(final_database, dtype=object))
-
-    elapsed = time.time() - start_time
-    print(f"\n✅ Xong! File: trainer/facenet_database.npy")
-    print(f"⏱️  Thời gian: {elapsed:.1f}s")
-    print(f"📊 {len(final_database)} users, {total_images} ảnh")
     input("\nEnter...")
 
-# TRAINING FACENET
 
-def train_model_incremental():
-    print_header()
-    print("TRAINING NGƯỜI MỚI (INCREMENTAL)     ")
+def train_model_unified(mode):
+    # KIỂM TRA ĐIỀU KIỆN ĐẦU VÀO
+    # Kiểm tra thư mục Mauanh
+    if not os.path.exists("Mauanh"):
+        print(" Chưa có thư mục Mauanh!")
+        print(" Hãy chọn [1] để thu thập ảnh trước")
+        return False
 
-    if not os.path.exists("trainer/facenet_database.npy"):
-        print(" Chưa có database cũ!")
-        print(" Dùng [2] để train toàn bộ lần đầu")
-        input()
-        return
+    # Khởi tạo biến
+    old_database = {}
+    target_user_ids = set()
 
-    # Load database cũ
-    print("📂 Load database cũ...")
-    old_database = np.load("trainer/facenet_database.npy", allow_pickle=True).item()
-    print(f"✅ Database cũ: {len(old_database)} users")
+    # Xử lý theo chế độ
+    if mode == 2:  # Người mới
+        # Kiểm tra database cũ
+        if not os.path.exists("trainer/facenet_database.npy"):
+            print("❌ Chưa có database cũ!")
+            print(" Hệ thống sẽ chuyển sang chế độ Train toàn bộ")
+            mode = 1
+        else:
+            # Load database cũ
+            print(" Load database cũ...")
+            old_database = np.load("trainer/facenet_database.npy",
+                                   allow_pickle=True).item()
+            print(f"✅ Database cũ: {len(old_database)} users\n")
 
-    # Tìm tất cả user_ids trong Mauanh
-    print("\n Quét thư mục Mauanh...")
+    # XÁC ĐỊNH DANH SÁCH USER CẦN TRAIN
+
+    print(" Quét thư mục Mauanh/...")
+
+    # Tìm tất cả user IDs trong Mauanh
     all_user_ids = set()
-
     for folder_name in os.listdir("Mauanh"):
         folder_path = os.path.join("Mauanh", folder_name)
 
@@ -442,28 +456,44 @@ def train_model_incremental():
                 if filename.startswith("User.") and filename.endswith(".jpg"):
                     user_id = int(filename.split(".")[1])
                     all_user_ids.add(user_id)
-
         elif folder_name.startswith("User.") and folder_name.endswith(".jpg"):
             user_id = int(folder_name.split(".")[1])
             all_user_ids.add(user_id)
 
-    # Tìm users mới (chưa có trong database)
-    new_user_ids = all_user_ids - set(old_database.keys())
+    if not all_user_ids:
+        print("❌ Không tìm thấy ảnh nào trong Mauanh!")
+        return False
 
-    if not new_user_ids:
-        print("\n✅ Không có user mới!")
-        print("💡 Tất cả users đã được train")
-        input()
-        return
+    print(f"✅ Tìm thấy {len(all_user_ids)} users trong Mauanh\n")
 
-    print(f"✅ Tìm thấy {len(all_user_ids)} users trong Mauanh")
-    print(f"🆕 Users mới: {sorted(new_user_ids)}\n")
+    # Xác định users cần train
+    if mode == 1:  # Toàn bộ
+        target_user_ids = all_user_ids
+        print(f"🎯 Sẽ train: TẤT CẢ {len(target_user_ids)} users")
 
-    # Train chỉ người mới
+    elif mode == 2:  # Người mới
+        target_user_ids = all_user_ids - set(old_database.keys())
+
+        if not target_user_ids:
+            print(" Không có user mới!")
+            print(" Tất cả users đã được train")
+            return False
+
+        print(f" Sẽ train: {len(target_user_ids)} users mới")
+        print(f"   Users mới: {sorted(target_user_ids)}")
+
+    print()
+
+    # ĐỌC ẢNH VÀ TÍNH EMBEDDING
+
+    print(" Đang đọc ảnh và tính embedding...")
+    print("  Mỗi ảnh ~40ms, vui lòng đợi...\n")
+
     embeddings_dict = {}
-    total_new_images = 0
+    processed = 0
+    total_images = 0
 
-    # Đếm ảnh của người mới
+    # Đếm tổng số ảnh
     for folder_name in os.listdir("Mauanh"):
         folder_path = os.path.join("Mauanh", folder_name)
 
@@ -471,20 +501,16 @@ def train_model_incremental():
             for filename in os.listdir(folder_path):
                 if filename.startswith("User.") and filename.endswith(".jpg"):
                     user_id = int(filename.split(".")[1])
-                    if user_id in new_user_ids:
-                        total_new_images += 1
-
+                    if user_id in target_user_ids:
+                        total_images += 1
         elif folder_name.startswith("User.") and folder_name.endswith(".jpg"):
             user_id = int(folder_name.split(".")[1])
-            if user_id in new_user_ids:
-                total_new_images += 1
+            if user_id in target_user_ids:
+                total_images += 1
 
-    print(f"📊 Tìm thấy {total_new_images} ảnh của người mới\n")
+    print(f"📊 Tổng số ảnh cần xử lý: {total_images}\n")
 
-    processed = 0
-    start_time = time.time()
-
-    # Process chỉ ảnh của người mới
+    # Xử lý ảnh
     for folder_name in os.listdir("Mauanh"):
         folder_path = os.path.join("Mauanh", folder_name)
 
@@ -493,8 +519,9 @@ def train_model_incremental():
                 if filename.startswith("User.") and filename.endswith(".jpg"):
                     user_id = int(filename.split(".")[1])
 
-                    if user_id not in new_user_ids:
-                        continue  # Skip người đã có
+                    # Kiểm tra user có trong danh sách cần train không
+                    if user_id not in target_user_ids:
+                        continue  # Skip
 
                     path = os.path.join(folder_path, filename)
                     img = cv2.imread(path)
@@ -507,13 +534,15 @@ def train_model_incremental():
                         embeddings_dict[user_id].append(embedding)
 
                     processed += 1
-                    print(f"\r🔄 Processing: {processed}/{total_new_images} ({processed * 100 // total_new_images}%)", end="")
+                    print(f"\r Processing: {processed}/{total_images} "
+                          f"({processed * 100 // total_images}%)", end="")
 
         elif folder_name.startswith("User.") and folder_name.endswith(".jpg"):
             user_id = int(folder_name.split(".")[1])
 
-            if user_id not in new_user_ids:
-                continue  # Skip người đã có
+            # Kiểm tra user có trong danh sách cần train không
+            if user_id not in target_user_ids:
+                continue  # Skip
 
             path = os.path.join("Mauanh", folder_name)
             img = cv2.imread(path)
@@ -526,11 +555,15 @@ def train_model_incremental():
                 embeddings_dict[user_id].append(embedding)
 
             processed += 1
-            print(f"\r🔄 Processing: {processed}/{total_new_images} ({processed * 100 // total_new_images}%)", end="")
+            print(f"\r Processing: {processed}/{total_images} "
+                  f"({processed * 100 // total_images}%)", end="")
 
-    print("\n\n📊 Tính embeddings cho người mới...")
+    print("\n")
 
-    # Tính mean embedding cho người mới
+    # TÍNH EMBEDDING TRUNG BÌNH
+
+    print(" Tính embedding trung bình cho mỗi user...")
+
     new_embeddings = {}
     for user_id, embeddings in embeddings_dict.items():
         mean_embedding = np.mean(embeddings, axis=0)
@@ -538,33 +571,46 @@ def train_model_incremental():
         new_embeddings[user_id] = mean_embedding
         print(f"   User {user_id}: {len(embeddings)} ảnh → 1 embedding")
 
-    # Merge với database cũ
-    final_database = {**old_database, **new_embeddings}
+    print()
+    # LƯU DATABASE
+    if mode == 1:  # Toàn bộ → Ghi đè
+        final_database = new_embeddings
+        print(f" Lưu database (ghi đè): {len(final_database)} users")
 
-    # Save
-    np.save("trainer/facenet_database.npy", np.array(final_database, dtype=object))
+    elif mode == 2:  # Người mới → Merge
+        final_database = {**old_database, **new_embeddings}
+        print(f" Merge database:")
+        print(f"   {len(old_database)} users cũ + "
+              f"{len(new_embeddings)} users mới = "
+              f"{len(final_database)} total")
 
-    elapsed = time.time() - start_time
-    print(f"\n✅ Xong! File: trainer/facenet_database.npy")
-    print(f"⏱️  Thời gian: {elapsed:.1f}s")
-    print(f"📊 Database: {len(old_database)} cũ + {len(new_embeddings)} mới = {len(final_database)} total")
-    print(f"\n💡 Tiết kiệm: Chỉ train {total_new_images} ảnh thay vì toàn bộ!")
-    input("\nEnter...")
+    # Tạo thư mục nếu chưa có
+    if not os.path.exists("trainer"):
+        os.makedirs("trainer")
 
-# RECOGNITION (FACENET)
+    # Lưu file
+    np.save("trainer/facenet_database.npy",
+            np.array(final_database, dtype=object))
+
+    print(f" Đã lưu: trainer/facenet_database.npy")
+    print(f" Hoàn thành!")
+
+    if mode == 2:
+        print(f"\n💡 Tiết kiệm: Chỉ train {total_images} ảnh thay vì toàn bộ!")
+
+    return True
 
 
 def recognition_dual_camera():
     print_header()
     print("        NHẬN DIỆN (FaceNet)                  ")
 
-
     if not os.path.exists("trainer/facenet_database.npy"):
-        print("❌ Chưa train! Chọn [2] hoặc [3]")
+        print("❌ Chưa train! Chọn [2]")
         input()
         return
 
-    print("🔄 Load FaceNet database...")
+    print("📂 Load FaceNet database...")
     database = np.load("trainer/facenet_database.npy", allow_pickle=True).item()
     print(f"✅ Loaded {len(database)} users")
 
@@ -576,7 +622,7 @@ def recognition_dual_camera():
             users[user_id] = {'name': f'User {user_id}', 'rfid': ''}
 
     print(f"✅ {len(users)} người")
-    print(f"🎯 MediaPipe + FaceNet")
+    print(f"🔍 MediaPipe + FaceNet")
     print(f"🎯 Threshold: {FACENET_THRESHOLD}")
     print("🟢 START - Q thoát\n")
 
@@ -590,9 +636,22 @@ def recognition_dual_camera():
             print(f"❌ Camera {cam_type} lỗi!")
             return
 
-        detector = mp_face_detection.FaceDetection(model_selection=0,
-                                                   min_detection_confidence=MEDIAPIPE_CONFIDENCE)  # type: ignore
-        last_id, last_time, count = -1, 0, 0
+        detector = mp_face_detection.FaceDetection(
+            model_selection=0,
+            min_detection_confidence=MEDIAPIPE_CONFIDENCE
+        )  # type: ignore
+
+        # ═══════════════════════════════════════════════════════
+        # BIẾN TRẠNG THÁI
+        # ═══════════════════════════════════════════════════════
+        last_success_id = -1  # ID người cuối xác thực THÀNH CÔNG
+        last_success_time = 0  # Thời gian xác thực thành công cuối
+
+        first_detection_time = 0  # Thời gian phát hiện khuôn mặt lần đầu
+        current_face_id = -1  # ID khuôn mặt hiện tại
+        stranger_warned = False  # Đã cảnh báo người lạ chưa
+
+        count = 0  # Số lần xác thực thành công
         fps, fc, lt = 0, 0, time.time()
 
         color = (0, 255, 255) if is_checkout else (0, 255, 0)
@@ -610,35 +669,64 @@ def recognition_dual_camera():
 
             faces = detect_faces(frame, detector)
 
+            # ═══════════════════════════════════════════════════════
+            # TRƯỜNG HỢP 1: KHÔNG CÓ KHUÔN MẶT
+            # ═══════════════════════════════════════════════════════
             if len(faces) == 0:
+                # Reset trạng thái khi không có khuôn mặt
+                first_detection_time = 0
+                current_face_id = -1
+                stranger_warned = False
+
                 status_text = "No face detected"
                 status_color = (128, 128, 128)
-                cv2.putText(frame, status_text, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
+                cv2.putText(frame, status_text, (10, 90),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
+
+            # ═══════════════════════════════════════════════════════
+            # TRƯỜNG HỢP 2: CÓ KHUÔN MẶT
+            # ═══════════════════════════════════════════════════════
             else:
                 for (x, y, w, h) in faces:
-                    time_since_last = ct - last_time
-                    in_cooldown = (last_id != -1 and time_since_last <= COOLDOWN_SECONDS)
+
+                    # ───────────────────────────────────────────────
+                    # BƯỚC 1: KIỂM TRA COOLDOWN (CHỈ KHI THÀNH CÔNG)
+                    # ───────────────────────────────────────────────
+                    time_since_success = ct - last_success_time
+                    in_cooldown = (last_success_id != -1 and
+                                   time_since_success <= COOLDOWN_SECONDS)
 
                     if in_cooldown:
-                        name = users[last_id]['name'] if last_id in users else "Unknown"
-                        cooldown_remaining = COOLDOWN_SECONDS - time_since_last
+                        # Hiển thị người vừa xác thực thành công
+                        name = (users[last_success_id]['name']
+                                if last_success_id in users else "Unknown")
+                        cooldown_remaining = COOLDOWN_SECONDS - time_since_success
                         col = (0, 255, 0)
                         conf_text = f"{cooldown_remaining:.0f}s"
 
                         cv2.rectangle(frame, (x, y), (x + w, y + h), col, 2)
-                        cv2.putText(frame, f"{name} ({conf_text})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, col, 2)
-                        continue
+                        cv2.putText(frame, f"{name} (Wait {conf_text})",
+                                    (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.6, col, 2)
+                        continue  # Bỏ qua xử lý
 
+                    # ───────────────────────────────────────────────
+                    # BƯỚC 2: NHẬN DIỆN KHUÔN MẶT
+                    # ───────────────────────────────────────────────
                     face_bgr = frame[y:y + h, x:x + w]
                     face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
 
                     embedding = get_embedding(face_rgb)
 
                     if embedding is None:
-                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 165, 255), 2)
-                        cv2.putText(frame, "Processing...", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
+                        cv2.rectangle(frame, (x, y), (x + w, y + h),
+                                      (0, 165, 255), 2)
+                        cv2.putText(frame, "Processing...", (x, y - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                                    (0, 165, 255), 2)
                         continue
 
+                    # So sánh với database
                     min_distance = float('inf')
                     predicted_id = -1
 
@@ -648,23 +736,77 @@ def recognition_dual_camera():
                             min_distance = distance
                             predicted_id = user_id
 
+                    # ───────────────────────────────────────────────
+                    # BƯỚC 3: XỬ LÝ KẾT QUẢ NHẬN DIỆN
+                    # ───────────────────────────────────────────────
+
+                    # 3A: NHẬN DIỆN THÀNH CÔNG
                     if min_distance < FACENET_THRESHOLD and predicted_id in users:
                         name = users[predicted_id]['name']
                         conf_text = f"{(1 - min_distance) * 100:.0f}%"
 
-                        send_face_to_blynk(predicted_id, name, is_checkout)
-                        last_id, last_time, count = predicted_id, ct, count + 1
+                        # Kiểm tra xem đây có phải người mới không
+                        if current_face_id != predicted_id:
+                            # Người mới → Reset timer, gửi Blynk
+                            first_detection_time = ct
+                            current_face_id = predicted_id
+                            stranger_warned = False
+
+                            # GỬI LÊN BLYNK (XÁC THỰC 2 YẾU TỐ)
+                            send_face_to_blynk(predicted_id, name, is_checkout)
+
+                            # CẬP NHẬT THÀNH CÔNG (BẮT ĐẦU COOLDOWN)
+                            last_success_id = predicted_id
+                            last_success_time = ct
+                            count += 1
+
+                            print(f"✅ {cam_type}: {name} (ID {predicted_id})")
+
                         col = (0, 255, 0)
+
+                    # 3B: NHẬN DIỆN THẤT BẠI (NGƯỜI LẠ)
                     else:
                         name = "Unknown"
                         col = (0, 0, 255)
-                        conf_text = f"{(1 - min_distance) * 100:.0f}%" if min_distance < 1 else "0%"
+                        conf_text = (f"{(1 - min_distance) * 100:.0f}%"
+                                     if min_distance < 1 else "0%")
 
+                        # Kiểm tra xem đây có phải người lạ mới không
+                        if current_face_id != -2:  # -2 = người lạ
+                            # Người lạ mới → Bắt đầu đếm thời gian
+                            first_detection_time = ct
+                            current_face_id = -2
+                            stranger_warned = False
+
+                        # Kiểm tra đã quá 20s chưa
+                        time_since_first = ct - first_detection_time
+                        if time_since_first >= 20 and not stranger_warned:
+                            # CẢNH BÁO NGƯỜI LẠ
+                            print(f"⚠️  {cam_type}: NGƯỜI LẠ xuất hiện > 20s!")
+
+                            # Gửi cảnh báo lên Blynk (ID âm để ESP32 biết là người lạ)
+                            send_face_to_blynk(-999, "NGUOI LA", is_checkout)
+
+                            stranger_warned = True  # Chỉ cảnh báo 1 lần
+
+                    # ───────────────────────────────────────────────
+                    # BƯỚC 4: VẼ KHUNG VÀ TEXT
+                    # ───────────────────────────────────────────────
                     cv2.rectangle(frame, (x, y), (x + w, y + h), col, 2)
-                    cv2.putText(frame, f"{name} ({conf_text})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, col, 2)
+                    cv2.putText(frame, f"{name} ({conf_text})",
+                                (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                                0.6, col, 2)
 
-            cv2.putText(frame, f"{cam_type}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-            cv2.putText(frame, f"FPS: {fps}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+            # ═══════════════════════════════════════════════════════
+            # HIỂN THỊ THÔNG TIN
+            # ═══════════════════════════════════════════════════════
+            cv2.putText(frame, f"{cam_type}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+            cv2.putText(frame, f"FPS: {fps}", (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+            cv2.putText(frame, f"Count: {count}", (10, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
             cv2.imshow(f'Camera {cam_type}', frame)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -673,8 +815,10 @@ def recognition_dual_camera():
         detector.close()
         cap.release()
 
-    t1 = threading.Thread(target=camera_thread, args=(ESP32CAM_IN, "IN", False))
-    t2 = threading.Thread(target=camera_thread, args=(ESP32CAM_OUT, "OUT", True))
+    t1 = threading.Thread(target=camera_thread,
+                          args=(ESP32CAM_IN, "IN", False))
+    t2 = threading.Thread(target=camera_thread,
+                          args=(ESP32CAM_OUT, "OUT", True))
 
     t1.start()
     t2.start()
@@ -685,120 +829,218 @@ def recognition_dual_camera():
     print("\n🔴 Tắt")
     input()
 
-# MANAGE
 
 def manage_users():
     print_header()
-    print(" QUẢN LÝ                  ")
-
+    print("     QUẢN LÝ NGƯỜI DÙNG                  ")
 
     users = load_users_from_google_sheets()
     if not users:
-        print("❌ Không load được!")
-        input()
+        print("❌ Không load được Google Sheets!")
+        input("\nEnter để quay lại...")
         return
 
-    print("📋 DANH SÁCH:\n")
-    print(f"{'ID':<5} {'Tên':<25} {'RFID':<15} {'Ảnh':<10}")
-    print("-" * 60)
+    # Vòng lặp menu quản lý
+    while True:
+        print_header()
+        print("     QUẢN LÝ NGƯỜI DÙNG                  ")
+        print()
 
-    for uid, info in users.items():
-        folder_name = f"Mauanh/{info['name'].replace(' ', '_')}"
-        ic = 0
+        # Hiển thị danh sách người dùng
+        print("📋 DANH SÁCH NGƯỜI DÙNG:\n")
+        print(f"{'ID':<5} {'Tên':<25} {'RFID':<15} {'Ảnh':<10}")
+        print("-" * 60)
 
-        if os.path.exists(folder_name) and os.path.isdir(folder_name):
-            ic = len([fn for fn in os.listdir(folder_name) if fn.startswith(f"User.{uid}.")])
+        for uid, info in sorted(users.items()):
+            folder_name = f"Mauanh/{info['name'].replace(' ', '_')}"
+            image_count = 0
 
-        if os.path.exists("Mauanh"):
-            ic += len([fn for fn in os.listdir("Mauanh")
-                       if fn.startswith(f"User.{uid}.") and os.path.isfile(os.path.join("Mauanh", fn))])
+            # Đếm ảnh trong folder
+            if os.path.exists(folder_name) and os.path.isdir(folder_name):
+                image_count = len([fn for fn in os.listdir(folder_name)
+                                   if fn.startswith(f"User.{uid}.")])
 
-        print(f"{uid:<5} {info['name']:<25} {info['rfid']:<15} {ic} ảnh")
+            # Đếm ảnh trong Mauanh (nếu có ảnh rời)
+            if os.path.exists("Mauanh"):
+                image_count += len([fn for fn in os.listdir("Mauanh")
+                                    if fn.startswith(f"User.{uid}.") and
+                                    os.path.isfile(os.path.join("Mauanh", fn))])
 
-    print("\n1. Xem ảnh | 2. Xóa | 0. Quay lại")
-    choice = input("\nChọn: ").strip()
+            print(f"{uid:<5} {info['name']:<25} {info['rfid']:<15} {image_count} ảnh")
 
-    if choice == '1':
-        try:
-            uid = int(input("\nID: ").strip())
-            if uid in users:
-                imgs = []
+        print("\n" + "═" * 60)
+        print("\n  1. Xem ảnh")
+        print("  2. Xóa người dùng")
+        print("  0. Quay lại")
+        print("\n" + "═" * 60)
+
+        choice = input("\nChọn: ").strip()
+
+        # ═══════════════════════════════════════════════════════
+        # NHÁNH 1: XEM ẢNH
+        # ═══════════════════════════════════════════════════════
+        if choice == '1':
+            try:
+                uid = int(input("\nNhập ID để xem ảnh: ").strip())
+
+                # Kiểm tra ID có tồn tại không
+                if uid not in users:
+                    print(f"\n❌ Thông báo: ID {uid} không tồn tại trong danh sách!")
+                    input("\nEnter để tiếp tục...")
+                    continue  # Quay lại hiển thị menu
+
+                # Tìm ảnh
+                images = []
                 folder_name = f"Mauanh/{users[uid]['name'].replace(' ', '_')}"
 
+                # Tìm trong folder
                 if os.path.exists(folder_name) and os.path.isdir(folder_name):
-                    imgs += [os.path.join(folder_name, fn) for fn in os.listdir(folder_name)
-                             if fn.startswith(f"User.{uid}.")]
+                    images += [os.path.join(folder_name, fn)
+                               for fn in os.listdir(folder_name)
+                               if fn.startswith(f"User.{uid}.")]
 
+                # Tìm ảnh rời trong Mauanh
                 if os.path.exists("Mauanh"):
-                    imgs += [os.path.join("Mauanh", fn) for fn in os.listdir("Mauanh")
-                             if fn.startswith(f"User.{uid}.") and os.path.isfile(os.path.join("Mauanh", fn))]
+                    images += [os.path.join("Mauanh", fn)
+                               for fn in os.listdir("Mauanh")
+                               if fn.startswith(f"User.{uid}.") and
+                               os.path.isfile(os.path.join("Mauanh", fn))]
 
-                if imgs:
-                    idx = 0
-                    while True:
-                        img = cv2.imread(imgs[idx])
-                        if img is not None:
-                            img = cv2.resize(img, (400, 400))
-                            cv2.putText(img, f"{users[uid]['name']} ({idx + 1}/{len(imgs)})",
-                                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                            cv2.imshow('Images', img)
-                        key = cv2.waitKey(0) & 0xFF
-                        if key == ord('q'):
-                            break
-                        elif key == ord(' '):
-                            idx = (idx + 1) % len(imgs)
-                    cv2.destroyAllWindows()
-        except:
-            pass
-        input()
+                # Kiểm tra có ảnh không
+                if not images:
+                    print(f"\n⚠️  Thông báo: Chưa thu thập ảnh cho '{users[uid]['name']}'!")
+                    print("💡 Hãy chọn [1] Thu thập ảnh khuôn mặt để thu thập ảnh")
+                    input("\nEnter để tiếp tục...")
+                    continue  # Quay lại hiển thị menu
 
-    elif choice == '2':
-        try:
-            uid = int(input("\nID xóa: ").strip())
-            if uid in users and input(f"Xóa '{users[uid]['name']}'? (yes/no): ").lower() == 'yes':
-                dc = 0
+                # Hiển thị ảnh
+                print(f"\n✅ Tìm thấy {len(images)} ảnh của '{users[uid]['name']}'")
+                print("💡 Nhấn SPACE để xem ảnh tiếp theo, Q để thoát\n")
+
+                idx = 0
+                while True:
+                    img = cv2.imread(images[idx])
+                    if img is not None:
+                        img = cv2.resize(img, (400, 400))
+                        cv2.putText(
+                            img,
+                            f"{users[uid]['name']} ({idx + 1}/{len(images)})",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7, (0, 255, 0), 2
+                        )
+                        cv2.imshow('Xem anh', img)
+
+                    key = cv2.waitKey(0) & 0xFF
+                    if key == ord('q'):
+                        break
+                    elif key == ord(' '):
+                        idx = (idx + 1) % len(images)
+
+                cv2.destroyAllWindows()
+                input("\nEnter để tiếp tục...")
+
+            except ValueError:
+                print("\n❌ ID phải là số!")
+                input("\nEnter để tiếp tục...")
+            except Exception as e:
+                print(f"\n❌ Lỗi: {e}")
+                input("\nEnter để tiếp tục...")
+
+        # ═══════════════════════════════════════════════════════
+        # NHÁNH 2: XÓA NGƯỜI DÙNG
+        # ═══════════════════════════════════════════════════════
+        elif choice == '2':
+            try:
+                uid = int(input("\nNhập ID để xóa ảnh: ").strip())
+
+                # Kiểm tra ID có tồn tại không
+                if uid not in users:
+                    print(f"\n❌ Thông báo: ID {uid} không tồn tại trong danh sách!")
+                    input("\nEnter để tiếp tục...")
+                    continue  # Quay lại hiển thị menu
+
+                # Xác nhận xóa
+                print(f"\n⚠️  Bạn có chắc chắn muốn xóa ảnh của '{users[uid]['name']}'?")
+                confirm = input("Nhập 'yes' để xác nhận, nhập gì khác để hủy: ").strip().lower()
+
+                if confirm != 'yes':
+                    print("\n✅ Đã hủy xóa")
+                    input("\nEnter để tiếp tục...")
+                    continue  # Quay lại hiển thị menu
+
+                # Thực hiện xóa
+                deleted_count = 0
                 folder_name = f"Mauanh/{users[uid]['name'].replace(' ', '_')}"
 
+                # Xóa folder
                 if os.path.exists(folder_name) and os.path.isdir(folder_name):
                     import shutil
+                    file_count = len([fn for fn in os.listdir(folder_name)
+                                      if fn.startswith(f"User.{uid}.")])
                     shutil.rmtree(folder_name)
-                    print(f"✅ Xóa folder: {folder_name}")
+                    deleted_count += file_count
+                    print(f"✅ Đã xóa thư mục: {folder_name}")
 
+                # Xóa ảnh rời trong Mauanh
                 if os.path.exists("Mauanh"):
                     for fn in os.listdir("Mauanh"):
-                        if fn.startswith(f"User.{uid}.") and os.path.isfile(os.path.join("Mauanh", fn)):
+                        if (fn.startswith(f"User.{uid}.") and
+                                os.path.isfile(os.path.join("Mauanh", fn))):
                             os.remove(os.path.join("Mauanh", fn))
-                            dc += 1
+                            deleted_count += 1
 
-                print(f"✅ Xóa {dc} ảnh. Train lại!")
-        except:
-            pass
-        input()
+                print(f"\n✅ Thông báo: Xóa thành công {deleted_count} ảnh của '{users[uid]['name']}'!")
+                print("💡 Lưu ý: Người dùng vẫn còn trong Google Sheets")
+                print("💡 Hãy train lại model nếu cần!")
+                input("\nEnter để tiếp tục...")
 
+            except ValueError:
+                print("\n❌ ID phải là số!")
+                input("\nEnter để tiếp tục...")
+            except Exception as e:
+                print(f"\n❌ Lỗi: {e}")
+                input("\nEnter để tiếp tục...")
+
+        # ═══════════════════════════════════════════════════════
+        # NHÁNH 3: QUAY LẠI MENU CHÍNH
+        # ═══════════════════════════════════════════════════════
+        elif choice == '0':
+            break  # Thoát vòng lặp, quay về menu chính
+
+        else:
+            print("\n❌ Lựa chọn không hợp lệ!")
+            input("\nEnter để tiếp tục...")
 # MAIN
 def main():
     while True:
         print_menu()
         choice = input("\nChọn: ").strip()
+
         if choice == '1':
             collect_faces()
+
         elif choice == '2':
-            train_model()
+            train_model_auto(reset=False)  # Auto-detect
+
         elif choice == '3':
-            train_model_incremental()
-        elif choice == '4':
             recognition_dual_camera()
-        elif choice == '5':
+
+        elif choice == '4':
             manage_users()
+
         elif choice == '0':
             print("\n👋 Bye!")
             break
+
+        else:
+            print("❌ Lựa chọn không hợp lệ!")
+            input()
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n⚠️ Stop!")
+        print("\n Stop!")
     finally:
         cv2.destroyAllWindows()
