@@ -28,15 +28,17 @@ const char *GOOGLE_LOG_URL = "https://script.google.com/macros/s/AKfycbxX3sWzaTq
 #define VPIN_TOTAL_OUT        V9
 #define VPIN_FACE_ID          V14
 #define VPIN_RELOAD_STUDENTS  V20
-#define VPIN_SCHEDULE_ON      V12
-#define VPIN_SCHEDULE_OFF     V13
+#define VPIN_SCHEDULE_ON      V10
+#define VPIN_SCHEDULE_OFF     V11
+#define VPIN_TIMEINPUT_ON     V12
+#define VPIN_TIMEINPUT_OFF    V13
 
 #define MAX_STUDENTS        50
 #define MAX_PEOPLE_IN_ROOM  20
 #define AUTH_TIMEOUT        20000
 #define EEPROM_SIZE         512
 #define MAGIC_NUMBER        0xABCD1234
-
+//cau truc du lieu sinh vien
 struct Student {
   int id;
   String name;
@@ -47,18 +49,18 @@ struct Student {
 
 enum AuthState { AUTH_IDLE, AUTH_FACE_DETECTED, AUTH_COMPLETED };
 enum AuthSource { SOURCE_NONE, SOURCE_RFID, SOURCE_FACE };
-
+// luu tru sv hien co
 Student students[MAX_STUDENTS];
 int studentCount = 0;
-String peopleInRoom[MAX_PEOPLE_IN_ROOM];
-int peopleCount = 0;
+String peopleInRoom[MAX_PEOPLE_IN_ROOM];// ds ID đang trong phòng
+int peopleCount = 0; // so nguoi hien co
 int totalIn = 0, totalOut = 0;
 
-AuthState authState = AUTH_IDLE;
-AuthSource authSource = SOURCE_NONE;
+AuthState authState = AUTH_IDLE;// kiem tra tt co dang nghi
+AuthSource authSource = SOURCE_NONE; // chua co nguon xã thuc
 int detectedFaceID = 0;
 String detectedName = "";
-unsigned long authStartTime = 0;
+unsigned long authStartTime = 0;//
 
 String currentTime, currentDate;
 int hh, mm, ss, da, mo, yr;
@@ -197,14 +199,14 @@ void loadStudentsFromGoogleSheets() {
   http.end();
   client.stop();
 }
-
+// tim sinh vien theo Face ID
 Student* findStudentByFaceID(int faceID) {
   for (int i = 0; i < studentCount; i++) {
     if (students[i].faceID == faceID) return &students[i];
   }
   return nullptr;
 }
-
+// tìm sv theo RFID
 Student* findStudentByRFID(String rfid) {
   for (int i = 0; i < studentCount; i++) {
     if (students[i].rfid.equalsIgnoreCase(rfid)) return &students[i];
@@ -233,7 +235,7 @@ void removePersonFromRoom(int faceID) {
     }
   }
 }
-
+//ghi log tới sheet
 void logToGoogleSheets(Student* student, String action) {
   if (WiFi.status() != WL_CONNECTED) return;
   String url = String(GOOGLE_LOG_URL) + "?action=log&id=" + String(student->id) +
@@ -251,29 +253,67 @@ void logToGoogleSheets(Student* student, String action) {
 }
 
 void controlDevicesOnEntry(int oldCount, int newCount) {
-  if (digitalRead(SW_LED) == LOW || digitalRead(SW_FAN) == LOW) return;
+  // CHỈ hoạt động khi AUTO (switch = HIGH)
+  if (digitalRead(SW_LED) == LOW && digitalRead(SW_FAN) == LOW) return;
+  
+  // NẾU LỊCH BIỂU BẬT → BỎ QUA AUTO
+  if (scheduleEnabled) {
+    Serial.println("AUTO: Bi chan boi SCHEDULE MODE");
+    return;
+  }
+  
+  // AUTO: Bật khi người đầu tiên vào
   if (oldCount == 0 && newCount == 1) {
-    digitalWrite(LED, HIGH);
-    digitalWrite(FAN, HIGH);
-    if (Blynk.connected()) {
-      Blynk.virtualWrite(VPIN_LED_CONTROL, 1);
-      Blynk.virtualWrite(VPIN_FAN_CONTROL, 1);
+    if (digitalRead(SW_LED) == HIGH) {
+      digitalWrite(LED, HIGH);
+      if (Blynk.connected()) {
+        Blynk.virtualWrite(VPIN_LED_CONTROL, 1);
+      }
+      Serial.println("AUTO: Bat den (nguoi dau vao)");
+    }
+    
+    if (digitalRead(SW_FAN) == HIGH) {
+      digitalWrite(FAN, HIGH);
+      if (Blynk.connected()) {
+        Blynk.virtualWrite(VPIN_FAN_CONTROL, 1);
+      }
+      Serial.println("AUTO: Bat quat (nguoi dau vao)");
     }
   }
 }
+
 
 void controlDevicesOnExit(int oldCount, int newCount) {
-  if (digitalRead(SW_LED) == LOW || digitalRead(SW_FAN) == LOW) return;
+  // CHỈ hoạt động khi AUTO (switch = HIGH)
+  if (digitalRead(SW_LED) == LOW && digitalRead(SW_FAN) == LOW) return;
+  
+  // NẾU LỊCH BIỂU BẬT → BỎ QUA AUTO
+  if (scheduleEnabled) {
+    Serial.println("AUTO: Bi chan boi SCHEDULE MODE");
+    return;
+  }
+  
+  // AUTO: Tắt khi người cuối cùng ra
   if (oldCount == 1 && newCount == 0) {
-    digitalWrite(LED, LOW);
-    digitalWrite(FAN, LOW);
-    if (Blynk.connected()) {
-      Blynk.virtualWrite(VPIN_LED_CONTROL, 0);
-      Blynk.virtualWrite(VPIN_FAN_CONTROL, 0);
+    if (digitalRead(SW_LED) == HIGH) {
+      digitalWrite(LED, LOW);
+      if (Blynk.connected()) {
+        Blynk.virtualWrite(VPIN_LED_CONTROL, 0);
+      }
+      Serial.println("AUTO: Tat den (nguoi cuoi ra)");
+    }
+    
+    if (digitalRead(SW_FAN) == HIGH) {
+      digitalWrite(FAN, LOW);
+      if (Blynk.connected()) {
+        Blynk.virtualWrite(VPIN_FAN_CONTROL, 0);
+      }
+      Serial.println("AUTO: Tat quat (nguoi cuoi ra)");
     }
   }
 }
 
+// CANH BAO NGUOI LA
 void sendStrangerAlert(String reason, String details) {
   String notification = currentTime + " | CẢNH BÁO | " + reason + " | " + details + " | Yêu cầu: Kiểm tra ngay";
   if (Blynk.connected()) {
@@ -562,26 +602,73 @@ BLYNK_WRITE(VPIN_FACE_ID) {
   }
 }
 
-BLYNK_WRITE(VPIN_SCHEDULE_ON) {
+BLYNK_WRITE(VPIN_TIMEINPUT_ON) {
   TimeInputParam t(param);
   if (t.hasStartTime()) {
     scheduleON_hour = t.getStartHour();
     scheduleON_min = t.getStartMinute();
+    
+    // Tạo chuỗi hiển thị "07:00"
+    String timeStr = "";
+    if (scheduleON_hour < 10) timeStr += "0";
+    timeStr += String(scheduleON_hour);
+    timeStr += ":";
+    if (scheduleON_min < 10) timeStr += "0";
+    timeStr += String(scheduleON_min);
+    
+    // Gửi sang V10 để Web hiển thị
+    Blynk.virtualWrite(VPIN_SCHEDULE_ON, timeStr);
+    
+    Serial.print("Schedule ON set to: ");
+    Serial.println(timeStr);
   }
 }
 
-BLYNK_WRITE(VPIN_SCHEDULE_OFF) {
+BLYNK_WRITE(VPIN_TIMEINPUT_OFF) {
   TimeInputParam t(param);
   if (t.hasStartTime()) {
     scheduleOFF_hour = t.getStartHour();
     scheduleOFF_min = t.getStartMinute();
+    
+    // Tạo chuỗi hiển thị "17:30"
+    String timeStr = "";
+    if (scheduleOFF_hour < 10) timeStr += "0";
+    timeStr += String(scheduleOFF_hour);
+    timeStr += ":";
+    if (scheduleOFF_min < 10) timeStr += "0";
+    timeStr += String(scheduleOFF_min);
+    
+    // Gửi sang V11 để Web hiển thị
+    Blynk.virtualWrite(VPIN_SCHEDULE_OFF, timeStr);
+    
+    Serial.print("Schedule OFF set to: ");
+    Serial.println(timeStr);
   }
 }
 
 BLYNK_CONNECTED() {
+ // Đồng bộ số liệu phòng
   Blynk.virtualWrite(VPIN_ROOM_COUNT, peopleCount);
   Blynk.virtualWrite(VPIN_TOTAL_IN, totalIn);
   Blynk.virtualWrite(VPIN_TOTAL_OUT, totalOut);
+  
+  // Đồng bộ giờ BẬT lên WEB
+  String onTime = "";
+  if (scheduleON_hour < 10) onTime += "0";
+  onTime += String(scheduleON_hour);
+  onTime += ":";
+  if (scheduleON_min < 10) onTime += "0";
+  onTime += String(scheduleON_min);
+  Blynk.virtualWrite(VPIN_SCHEDULE_ON, onTime);
+  
+  // Đồng bộ giờ TẮT lên WEB
+  String offTime = "";
+  if (scheduleOFF_hour < 10) offTime += "0";
+  offTime += String(scheduleOFF_hour);
+  offTime += ":";
+  if (scheduleOFF_min < 10) offTime += "0";
+  offTime += String(scheduleOFF_min);
+  Blynk.virtualWrite(VPIN_SCHEDULE_OFF, offTime);
 }
 
 void updateBlynk() {
@@ -589,23 +676,67 @@ void updateBlynk() {
 }
 
 void scheduleControl() {
-  if (!scheduleEnabled) return;
+  // NẾU LỊCH BIỂU TẮT → KHÔNG LÀM GÌ
+  if (!scheduleEnabled) {
+    scheduleTurnedOn = false;
+    scheduleTurnedOff = false;
+    return;
+  }
+  
+  // SCHEDULE BẬT (ưu tiên cao nhất trong chế độ AUTO)
   if (hh == scheduleON_hour && mm == scheduleON_min && !scheduleTurnedOn) {
-    digitalWrite(LED, HIGH);
-    digitalWrite(FAN, HIGH);
-    Blynk.virtualWrite(VPIN_LED_CONTROL, 1);
-    Blynk.virtualWrite(VPIN_FAN_CONTROL, 1);
+    // CHỈ điều khiển thiết bị nào đang ở chế độ AUTO
+    if (digitalRead(SW_LED) == HIGH) {
+      digitalWrite(LED, HIGH);
+      if (Blynk.connected()) {
+        Blynk.virtualWrite(VPIN_LED_CONTROL, 1);
+      }
+      Serial.println("SCHEDULE: Bat den");
+    } else {
+      Serial.println("SCHEDULE: LED o che do MANUAL, khong bat");
+    }
+    
+    if (digitalRead(SW_FAN) == HIGH) {
+      digitalWrite(FAN, HIGH);
+      if (Blynk.connected()) {
+        Blynk.virtualWrite(VPIN_FAN_CONTROL, 1);
+      }
+      Serial.println("SCHEDULE: Bat quat");
+    } else {
+      Serial.println("SCHEDULE: FAN o che do MANUAL, khong bat");
+    }
+    
     scheduleTurnedOn = true;
     scheduleTurnedOff = false;
   }
+  
+  // SCHEDULE TẮT
   if (hh == scheduleOFF_hour && mm == scheduleOFF_min && !scheduleTurnedOff) {
-    digitalWrite(LED, LOW);
-    digitalWrite(FAN, LOW);
-    Blynk.virtualWrite(VPIN_LED_CONTROL, 0);
-    Blynk.virtualWrite(VPIN_FAN_CONTROL, 0);
+    // CHỈ điều khiển thiết bị nào đang ở chế độ AUTO
+    if (digitalRead(SW_LED) == HIGH) {
+      digitalWrite(LED, LOW);
+      if (Blynk.connected()) {
+        Blynk.virtualWrite(VPIN_LED_CONTROL, 0);
+      }
+      Serial.println("SCHEDULE: Tat den");
+    } else {
+      Serial.println("SCHEDULE: LED o che do MANUAL, khong tat");
+    }
+    
+    if (digitalRead(SW_FAN) == HIGH) {
+      digitalWrite(FAN, LOW);
+      if (Blynk.connected()) {
+        Blynk.virtualWrite(VPIN_FAN_CONTROL, 0);
+      }
+      Serial.println("SCHEDULE: Tat quat");
+    } else {
+      Serial.println("SCHEDULE: FAN o che do MANUAL, khong tat");
+    }
+    
     scheduleTurnedOff = true;
     scheduleTurnedOn = false;
   }
+   // Reset flags khi qua phút khác
   if (mm != scheduleON_min) scheduleTurnedOn = false;
   if (mm != scheduleOFF_min) scheduleTurnedOff = false;
 }

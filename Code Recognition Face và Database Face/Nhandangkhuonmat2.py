@@ -5,10 +5,12 @@ import time
 import requests
 import threading
 import mediapipe as mp
-from keras_facenet import FaceNet
+import torch
+from facenet_pytorch import InceptionResnetV1
+from PIL import Image
+
 
 # CẤU HÌNH
-
 BLYNK_TOKEN = "dRetcrvdh9fU4oY6Fd88XwqpBCCXNJ_5"
 BLYNK_URL = f"https://blynk.cloud/external/api/update?token={BLYNK_TOKEN}"
 
@@ -35,7 +37,10 @@ mp_drawing = mp.solutions.drawing_utils  # type: ignore
 
 # FaceNet
 print("🔄 Đang load FaceNet model...")
-facenet = FaceNet()
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+facenet = InceptionResnetV1(pretrained='vggface2').eval()
 print("✅ FaceNet model loaded!")
 
 
@@ -152,13 +157,35 @@ def detect_faces(frame, detector):
 
 
 # FACENET FUNCTIONS
-def get_embedding(face_rgb):
-    """Tính FaceNet embedding cho 1 face (RGB)"""
+def get_embedding(face_bgr):
+    """
+    Tính FaceNet embedding cho 1 face (BGR từ OpenCV)
+    Trả về: numpy array 128 chiều
+    """
     try:
+        # Chuyển BGR → RGB
+        face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+
+        # Resize về 160x160 (yêu cầu của FaceNet)
         face_resized = cv2.resize(face_rgb, (160, 160))
-        embedding = facenet.embeddings([face_resized])[0]
+
+        # Chuyển sang PIL Image
+        face_pil = Image.fromarray(face_resized)
+
+        # Chuẩn hóa ảnh: [0, 255] → [-1, 1]
+        face_tensor = torch.tensor(np.array(face_pil)).permute(2, 0, 1).float()
+        face_tensor = (face_tensor - 127.5) / 128.0
+        face_tensor = face_tensor.unsqueeze(0).to(device)
+
+        # Tính embedding
+        with torch.no_grad():
+            embedding = facenet(face_tensor).cpu().numpy()[0]
+
+        # Chuẩn hóa L2
         embedding = embedding / np.linalg.norm(embedding)
+
         return embedding
+
     except Exception as e:
         print(f" Embedding error: {e}")
         return None
@@ -525,8 +552,7 @@ def train_model_unified(mode):
 
                     path = os.path.join(folder_path, filename)
                     img = cv2.imread(path)
-                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    embedding = get_embedding(img_rgb)
+                    embedding = get_embedding(img)
 
                     if embedding is not None:
                         if user_id not in embeddings_dict:
@@ -546,8 +572,7 @@ def train_model_unified(mode):
 
             path = os.path.join("Mauanh", folder_name)
             img = cv2.imread(path)
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            embedding = get_embedding(img_rgb)
+            embedding = get_embedding(img)
 
             if embedding is not None:
                 if user_id not in embeddings_dict:
@@ -600,6 +625,37 @@ def train_model_unified(mode):
 
     return True
 
+
+def remove_user_from_database(user_id):
+    """Xóa user khỏi FaceNet database"""
+    db_path = "trainer/facenet_database.npy"
+
+    if not os.path.exists(db_path):
+        print("⚠️  Database chưa tồn tại")
+        return False
+
+    try:
+        # Load database
+        database = np.load(db_path, allow_pickle=True).item()
+
+        # Kiểm tra user có trong database không
+        if user_id not in database:
+            print(f"⚠️  User {user_id} không có trong database")
+            return False
+
+        # Xóa user
+        del database[user_id]
+
+        # Lưu lại database
+        np.save(db_path, np.array(database, dtype=object))
+
+        print(f"✅ Đã xóa User {user_id} khỏi database")
+        print(f"   Database còn: {len(database)} users")
+        return True
+
+    except Exception as e:
+        print(f"❌ Lỗi khi xóa database: {e}")
+        return False
 
 def recognition_dual_camera():
     print_header()
@@ -785,7 +841,7 @@ def recognition_dual_camera():
                             print(f"⚠️  {cam_type}: NGƯỜI LẠ xuất hiện > 20s!")
 
                             # Gửi cảnh báo lên Blynk (ID âm để ESP32 biết là người lạ)
-                            send_face_to_blynk(-999, "NGUOI LA", is_checkout)
+                            send_face_to_blynk( "NGUOI LA", is_checkout)
 
                             stranger_warned = True  # Chỉ cảnh báo 1 lần
 
@@ -946,60 +1002,121 @@ def manage_users():
                 print(f"\n❌ Lỗi: {e}")
                 input("\nEnter để tiếp tục...")
 
-        # ═══════════════════════════════════════════════════════
-        # NHÁNH 2: XÓA NGƯỜI DÙNG
-        # ═══════════════════════════════════════════════════════
+                # ═══════════════════════════════════════════════════════
+                # NHÁNH 2: XÓA NGƯỜI DÙNG
+                # ═══════════════════════════════════════════════════════
         elif choice == '2':
-            try:
-                uid = int(input("\nNhập ID để xóa ảnh: ").strip())
+                try:
+                    uid = int(input("\nNhập ID để xóa: ").strip())
 
-                # Kiểm tra ID có tồn tại không
-                if uid not in users:
-                    print(f"\n❌ Thông báo: ID {uid} không tồn tại trong danh sách!")
+                    # Kiểm tra ID có tồn tại không
+                    if uid not in users:
+                        print(f"\n❌ Thông báo: ID {uid} không tồn tại trong danh sách!")
+                        input("\nEnter để tiếp tục...")
+                        continue
+
+                    # Hiển thị thông tin người dùng
+                    print(f"\n{'=' * 60}")
+                    print(f"📋 THÔNG TIN NGƯỜI DÙNG:")
+                    print(f"   ID: {uid}")
+                    print(f"   Tên: {users[uid]['name']}")
+                    print(f"   RFID: {users[uid]['rfid']}")
+
+                    # Đếm ảnh
+                    folder_name = f"Mauanh/{users[uid]['name'].replace(' ', '_')}"
+                    image_count = 0
+
+                    if os.path.exists(folder_name) and os.path.isdir(folder_name):
+                        image_count = len([fn for fn in os.listdir(folder_name)
+                                           if fn.startswith(f"User.{uid}.")])
+
+                    if os.path.exists("Mauanh"):
+                        image_count += len([fn for fn in os.listdir("Mauanh")
+                                            if fn.startswith(f"User.{uid}.") and
+                                            os.path.isfile(os.path.join("Mauanh", fn))])
+
+                    print(f"   Số ảnh: {image_count}")
+
+                    # Kiểm tra có trong database không
+                    db_exists = os.path.exists("trainer/facenet_database.npy")
+                    in_database = False
+
+                    if db_exists:
+                        database = np.load("trainer/facenet_database.npy",
+                                           allow_pickle=True).item()
+                        in_database = uid in database
+                        print(f"   Trong database: {'Có' if in_database else 'Không'}")
+
+                    print(f"{'=' * 60}\n")
+
+                    # Xác nhận xóa
+                    print("⚠️  BẠN SẼ XÓA:")
+                    print(f"   ✓ Tất cả {image_count} ảnh")
+                    if in_database:
+                        print(f"   ✓ Embedding trong database (hệ thống sẽ KHÔNG nhận diện được nữa)")
+                    print(f"\n💡 Lưu ý: Dữ liệu trên Google Sheets KHÔNG bị xóa")
+                    print(f"         (chỉ xóa ảnh và khả năng nhận diện)\n")
+
+                    confirm = input("Nhập 'YES' (viết hoa) để xác nhận: ").strip()
+
+                    if confirm != 'YES':
+                        print("\n✅ Đã hủy xóa")
+                        input("\nEnter để tiếp tục...")
+                        continue
+
+                    # ═══════════════════════════════════════════════════════
+                    # THỰC HIỆN XÓA
+                    # ═══════════════════════════════════════════════════════
+                    print(f"\n🔄 Đang xóa...")
+
+                    deleted_count = 0
+
+                    # 1. Xóa folder ảnh
+                    if os.path.exists(folder_name) and os.path.isdir(folder_name):
+                        import shutil
+                        file_count = len([fn for fn in os.listdir(folder_name)
+                                          if fn.startswith(f"User.{uid}.")])
+                        shutil.rmtree(folder_name)
+                        deleted_count += file_count
+                        print(f"   ✓ Xóa thư mục: {folder_name}")
+
+                    # 2. Xóa ảnh rời
+                    if os.path.exists("Mauanh"):
+                        for fn in os.listdir("Mauanh"):
+                            if (fn.startswith(f"User.{uid}.") and
+                                    os.path.isfile(os.path.join("Mauanh", fn))):
+                                os.remove(os.path.join("Mauanh", fn))
+                                deleted_count += 1
+
+                    print(f"   ✓ Xóa {deleted_count} ảnh")
+
+                    # 3. Xóa khỏi database
+                    if in_database:
+                        success = remove_user_from_database(uid)
+                        if success:
+                            print(f"   ✓ Xóa embedding khỏi database")
+                        else:
+                            print(f"   ⚠️  Không xóa được database")
+
+                    # KẾT QUẢ
+                    print(f"\n{'=' * 60}")
+                    print(f"✅ XÓA THÀNH CÔNG!")
+                    print(f"   • Đã xóa {deleted_count} ảnh")
+                    if in_database:
+                        print(f"   • Hệ thống sẽ KHÔNG nhận diện '{users[uid]['name']}' nữa")
+                    print(f"   • Dữ liệu Google Sheets vẫn còn (nếu cần xóa hẳn)")
+                    print(f"{'=' * 60}")
+
                     input("\nEnter để tiếp tục...")
-                    continue  # Quay lại hiển thị menu
 
-                # Xác nhận xóa
-                print(f"\n⚠️  Bạn có chắc chắn muốn xóa ảnh của '{users[uid]['name']}'?")
-                confirm = input("Nhập 'yes' để xác nhận, nhập gì khác để hủy: ").strip().lower()
-
-                if confirm != 'yes':
-                    print("\n✅ Đã hủy xóa")
+                except ValueError:
+                    print("\n❌ ID phải là số!")
                     input("\nEnter để tiếp tục...")
-                    continue  # Quay lại hiển thị menu
-
-                # Thực hiện xóa
-                deleted_count = 0
-                folder_name = f"Mauanh/{users[uid]['name'].replace(' ', '_')}"
-
-                # Xóa folder
-                if os.path.exists(folder_name) and os.path.isdir(folder_name):
-                    import shutil
-                    file_count = len([fn for fn in os.listdir(folder_name)
-                                      if fn.startswith(f"User.{uid}.")])
-                    shutil.rmtree(folder_name)
-                    deleted_count += file_count
-                    print(f"✅ Đã xóa thư mục: {folder_name}")
-
-                # Xóa ảnh rời trong Mauanh
-                if os.path.exists("Mauanh"):
-                    for fn in os.listdir("Mauanh"):
-                        if (fn.startswith(f"User.{uid}.") and
-                                os.path.isfile(os.path.join("Mauanh", fn))):
-                            os.remove(os.path.join("Mauanh", fn))
-                            deleted_count += 1
-
-                print(f"\n✅ Thông báo: Xóa thành công {deleted_count} ảnh của '{users[uid]['name']}'!")
-                print("💡 Lưu ý: Người dùng vẫn còn trong Google Sheets")
-                print("💡 Hãy train lại model nếu cần!")
-                input("\nEnter để tiếp tục...")
-
-            except ValueError:
-                print("\n❌ ID phải là số!")
-                input("\nEnter để tiếp tục...")
-            except Exception as e:
-                print(f"\n❌ Lỗi: {e}")
-                input("\nEnter để tiếp tục...")
+                except Exception as e:
+                    print(f"\n❌ Lỗi: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    input("\nEnter để tiếp tục...")
 
         # ═══════════════════════════════════════════════════════
         # NHÁNH 3: QUAY LẠI MENU CHÍNH
